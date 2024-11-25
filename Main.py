@@ -1,4 +1,4 @@
-import pyautogui
+import pyautogui 
 import time
 from PIL import ImageChops, Image, ImageStat, ImageFilter
 import os
@@ -7,23 +7,28 @@ from twilio.rest import Client
 from flask import Flask, request, send_from_directory
 
 # Configuration
-num_screens = 7
+num_screens = 3
 screenshots_dir = os.path.abspath("screenshots")
-difference_limit = 100000
-delay = 15
-whatsapp_number = "whatsapp:+(number)"  # Your number in international format
-twilio_number = "whatsapp:+(number)"  # Twilio's WhatsApp number
+correct_screenshots_dir = os.path.abspath("CorrectScreenshots")
+if not os.path.exists(correct_screenshots_dir):
+    os.makedirs(correct_screenshots_dir)
+
+difference_limit = 70000
+delay = 20
+whatsapp_number = "whatsapp:+"  # Your number in international format
+twilio_number = "whatsapp:+14155238886"  # Twilio's WhatsApp number
 
 # Twilio credentials
-account_sid = "(sid)"
-auth_token = "(token)"
+account_sid = "(your here)"
+auth_token = "(your here)"
 client = Client(account_sid, auth_token)
 
-# Initialize Flask server for webhook
+# Initialize Flask server for webhoo
 app = Flask(__name__)
 should_stop = False
 awaiting_response = False
 last_detected_screen = None
+paused = False
 
 def is_vscode_window(window):
     return window and ("Visual Studio Code" in window.title or "Code" in window.title)
@@ -84,7 +89,7 @@ def send_whatsapp_message(message, image_path=None):
         "to": whatsapp_number
     }
     if image_path:
-        message_data["media_url"] = f"(your ngrok server) /{os.path.basename(image_path)}" #Link ngrok server
+        message_data["media_url"] = f"https://1cf6-2804-7f0-20-1fc1-2d13-5b11-2b82-1265.ngrok-free.app/{os.path.basename(image_path)}"
     client.messages.create(**message_data)
 
 @app.route("/<filename>")
@@ -93,13 +98,25 @@ def serve_file(filename):
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_webhook():
-    global should_stop, awaiting_response, last_detected_screen
+    global should_stop, awaiting_response, last_detected_screen, paused
     message_body = request.form.get("Body").strip().lower()
     if message_body == "ok":
-        should_stop = True
-    elif message_body == "errou":
+        screenshot = pyautogui.screenshot()
+        screenshot_path = os.path.join(correct_screenshots_dir, f"correct_screen_{int(time.time())}.png")
+        screenshot.save(screenshot_path)
+        print(f"Screenshot saved to CorrectScreenshots: {screenshot_path}")
+        paused = True
+    elif message_body in ["errou"]:
         os.rename("temp_screenshot.png", os.path.join(screenshots_dir, f"screen{int(time.time())}.png"))
         last_detected_screen = None
+        paused = False
+        print("Resuming the program and saving the screenshot.")
+    elif message_body == "pausar":
+        paused = True
+        print("Program paused.")
+    elif message_body == "voltar":
+        paused = False
+        print("Program on-line.")
     elif message_body == "deletar":
         os.remove("temp_screenshot.png")
         print("Screenshot deleted successfully.")
@@ -107,7 +124,7 @@ def whatsapp_webhook():
     return "OK", 200
 
 def main():
-    global should_stop, awaiting_response, last_detected_screen
+    global should_stop, awaiting_response, last_detected_screen, paused
     current_screen = 1
     print("Starting script...")
 
@@ -116,7 +133,8 @@ def main():
             print("Stopping script as per user confirmation.")
             break
 
-        if awaiting_response:
+        if awaiting_response or paused:
+            print("Program is paused. Waiting for 'voltar' or 'errou' command...")
             time.sleep(5)
             continue
 
